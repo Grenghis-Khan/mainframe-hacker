@@ -316,22 +316,24 @@ const Mainframe = (() => {
     document.addEventListener("keydown", handleKeydown);
   }
 
-  // Temp element for HTML escaping (same trick as Hacker Typer)
-  const escaper = document.createElement("div");
-
   function renderTerminal() {
-    // Build the full text from prompt + typed portion of corpus
+    // Ensure CSS handles whitespace correctly
+    terminalEl.style.whiteSpace = "pre-wrap";
+
+    // Get raw text
     const raw = PROMPT + CODE_TEXT.substring(0, index);
-    // HTML-escape using DOM (handles <, >, & automatically)
-    escaper.textContent = raw;
-    const escaped = escaper.innerHTML;
-    // Convert whitespace to HTML
-    const html = escaped
-      .replace(/\n/g, "<br/>")
-      .replace(/\t/g, "&nbsp;&nbsp;&nbsp;&nbsp;")
-      .replace(/ /g, "&nbsp;");
-    // Add blinking cursor via CSS
-    terminalEl.innerHTML = html + '<span class="blink-cursor">|</span>';
+
+    // Escape HTML special chars (for <linux/module.h>)
+    // Use <br> for newlines to guarantee line breaks
+    // Keep spaces as-is (pre-wrap handles them naturally)
+    const html = raw
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\n/g, "<br>");
+
+    terminalEl.innerHTML = html;
+    // Cursor is handled by CSS ::after pseudo-element
   }
 
   function handleKeydown(e) {
