@@ -299,7 +299,6 @@ const Mainframe = (() => {
   let shiftCount = 0;
   let altCount = 0;
   let onTypeCallback = null;
-  let cursorTimer = null;
   const PROMPT =
     "> MAINFRAME INTERFACE v3.1.337\n> CONNECTION ESTABLISHED\n> TYPE TO ACCESS SYSTEM FILES...\n\n";
 
@@ -314,30 +313,25 @@ const Mainframe = (() => {
     // Render initial prompt
     renderTerminal();
 
-    // Blinking cursor
-    cursorTimer = setInterval(blinkCursor, 500);
-
     document.addEventListener("keydown", handleKeydown);
   }
+
+  // Temp element for HTML escaping (same trick as Hacker Typer)
+  const escaper = document.createElement("div");
 
   function renderTerminal() {
     // Build the full text from prompt + typed portion of corpus
     const raw = PROMPT + CODE_TEXT.substring(0, index);
-    // Convert whitespace to HTML (exactly like Hacker Typer)
-    const html = raw
+    // HTML-escape using DOM (handles <, >, & automatically)
+    escaper.textContent = raw;
+    const escaped = escaper.innerHTML;
+    // Convert whitespace to HTML
+    const html = escaped
       .replace(/\n/g, "<br/>")
       .replace(/\t/g, "&nbsp;&nbsp;&nbsp;&nbsp;")
       .replace(/ /g, "&nbsp;");
-    terminalEl.innerHTML = html;
-  }
-
-  function blinkCursor() {
-    const content = terminalEl.innerHTML;
-    if (content.endsWith("|")) {
-      terminalEl.innerHTML = content.slice(0, -1);
-    } else {
-      terminalEl.innerHTML += "|";
-    }
+    // Add blinking cursor via CSS
+    terminalEl.innerHTML = html + '<span class="blink-cursor">|</span>';
   }
 
   function handleKeydown(e) {
@@ -399,7 +393,6 @@ const Mainframe = (() => {
 
   function destroy() {
     document.removeEventListener("keydown", handleKeydown);
-    if (cursorTimer) clearInterval(cursorTimer);
   }
 
   return { init, destroy };
