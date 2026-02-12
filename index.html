@@ -71,15 +71,35 @@
         const cursorEl = document.getElementById("terminal-cursor");
 
         // --- Start ambient on first interaction ---
+        // --- Start ambient on first interaction ---
         let audioStarted = false;
-        function ensureAudio() {
-          if (!audioStarted) {
+        function ensureAudio(e) {
+          // If triggered by hover (not a user gesture), just try startAmbient (which now checks state)
+          // valid gestures: click, keydown
+          const isUserGesture =
+            e && (e.type === "click" || e.type === "keydown");
+
+          const ctx = AudioEngine.getContext();
+
+          if (ctx.state === "suspended" && isUserGesture) {
+            ctx
+              .resume()
+              .then(() => {
+                if (!audioStarted) {
+                  AudioEngine.startAmbient();
+                  audioStarted = true;
+                }
+              })
+              .catch((e) => console.warn("Audio resume failed", e));
+          } else if (ctx.state === "running" && !audioStarted) {
             AudioEngine.startAmbient();
             audioStarted = true;
           }
         }
-        document.addEventListener("mousemove", ensureAudio, { once: true });
-        document.addEventListener("click", ensureAudio, { once: true });
+
+        // distinct click or keydown needed for audio context
+        document.addEventListener("click", ensureAudio);
+        document.addEventListener("keydown", ensureAudio);
 
         // --- Initialize Decoder ---
         Decoder.init(messageContainer, onMessageComplete);
@@ -119,8 +139,8 @@
           // Play transition SFX
           AudioEngine.playTransition();
 
-          // Stop ambient hum
-          AudioEngine.stopAmbient();
+          // Start Mainframe Audio Theme!
+          AudioEngine.startMainframeTheme();
 
           // CRT wipe
           crtTransition.classList.add("active");
