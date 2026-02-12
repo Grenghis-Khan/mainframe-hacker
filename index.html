@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MAINFRAME // ACCESS TERMINAL</title>
+    <meta
+      name="description"
+      content="Welcome to the Metaverse. You have been granted access to the Mainframe."
+    />
+    <link rel="stylesheet" href="css/style.css" />
+  </head>
+  <body>
+    <!-- ============ DECODER SCREEN ============ -->
+    <div id="decoder">
+      <div id="message-container"></div>
+
+      <!-- 6 Trigger Zones -->
+      <div class="trigger-zone" data-zone="0"></div>
+      <div class="trigger-zone" data-zone="1"></div>
+      <div class="trigger-zone" data-zone="2"></div>
+      <div class="trigger-zone" data-zone="3"></div>
+      <div class="trigger-zone" data-zone="4"></div>
+      <div class="trigger-zone" data-zone="5"></div>
+
+      <!-- Countdown overlay -->
+      <div id="countdown-overlay">
+        <span id="countdown-number"></span>
+      </div>
+    </div>
+
+    <!-- ============ CRT TRANSITION ============ -->
+    <div id="crt-transition"></div>
+
+    <!-- ============ MAINFRAME SCREEN ============ -->
+    <div id="mainframe">
+      <!-- Top half: Three.js cityscape -->
+      <div id="cityscape-container"></div>
+
+      <!-- Bottom half: Terminal -->
+      <div id="terminal-container">
+        <div id="terminal"></div>
+        <span id="terminal-cursor"></span>
+      </div>
+    </div>
+
+    <!-- ============ ACCESS GRANTED OVERLAY ============ -->
+    <div id="access-granted">
+      <h1>ACCESS GRANTED</h1>
+    </div>
+
+    <!-- Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <!-- App modules -->
+    <script src="js/audio.js"></script>
+    <script src="js/decoder.js"></script>
+    <script src="js/mainframe.js"></script>
+    <script src="js/cityscape.js"></script>
+
+    <!-- App boot -->
+    <script>
+      (function boot() {
+        const decoderScreen = document.getElementById("decoder");
+        const mainframeScreen = document.getElementById("mainframe");
+        const messageContainer = document.getElementById("message-container");
+        const crtTransition = document.getElementById("crt-transition");
+        const countdownOverlay = document.getElementById("countdown-overlay");
+        const countdownNumber = document.getElementById("countdown-number");
+        const terminalEl = document.getElementById("terminal");
+        const cursorEl = document.getElementById("terminal-cursor");
+
+        // --- Start ambient on first interaction ---
+        let audioStarted = false;
+        function ensureAudio() {
+          if (!audioStarted) {
+            AudioEngine.startAmbient();
+            audioStarted = true;
+          }
+        }
+        document.addEventListener("mousemove", ensureAudio, { once: true });
+        document.addEventListener("click", ensureAudio, { once: true });
+
+        // --- Initialize Decoder ---
+        Decoder.init(messageContainer, onMessageComplete);
+
+        // --- Set up trigger zones ---
+        document.querySelectorAll(".trigger-zone").forEach((zone) => {
+          const zoneIndex = parseInt(zone.dataset.zone);
+
+          zone.addEventListener("mouseenter", () => {
+            ensureAudio();
+            if (!zone.classList.contains("triggered")) {
+              zone.classList.add("triggered");
+              Decoder.triggerZone(zoneIndex, messageContainer);
+            }
+          });
+        });
+
+        // --- Message complete → countdown → transition ---
+        function onMessageComplete() {
+          let count = 5;
+          countdownOverlay.classList.add("active");
+          countdownNumber.textContent = count;
+
+          const interval = setInterval(() => {
+            count--;
+            if (count > 0) {
+              countdownNumber.textContent = count;
+            } else {
+              clearInterval(interval);
+              countdownOverlay.classList.remove("active");
+              triggerTransition();
+            }
+          }, 1000);
+        }
+
+        function triggerTransition() {
+          // Play transition SFX
+          AudioEngine.playTransition();
+
+          // Stop ambient hum
+          AudioEngine.stopAmbient();
+
+          // CRT wipe
+          crtTransition.classList.add("active");
+
+          // After CRT animation, show mainframe
+          setTimeout(() => {
+            decoderScreen.style.display = "none";
+            Decoder.destroy();
+
+            mainframeScreen.classList.add("active");
+            crtTransition.classList.remove("active");
+            crtTransition.style.display = "none";
+
+            // Init cityscape
+            const cityscapeContainer = document.getElementById(
+              "cityscape-container",
+            );
+            Cityscape.init(cityscapeContainer);
+
+            // Init terminal — pass typing callback for cityscape interaction
+            Mainframe.init(terminalEl, cursorEl, () => {
+              Cityscape.onUserType();
+            });
+          }, 1500); // Duration of CRT animation
+        }
+      })();
+    </script>
+  </body>
+</html>
