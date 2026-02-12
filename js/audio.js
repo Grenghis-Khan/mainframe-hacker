@@ -16,69 +16,177 @@ const AudioEngine = (() => {
     return ctx;
   }
 
-  // --- Ambient Synth Hum ---
-  function startAmbient() {
-    if (isAmbientPlaying) return;
+  // --- Synthwave Soundtrack ---
+  let isPlaying = false;
+  let tempo = 110;
+  let nextNoteTime = 0.0;
+  let noteIndex = 0;
+  let sequenceTimerID = null;
+  let bassOsc = null;
+  let padOscs = [];
+
+  // Bass sequence: Driving 16th notes
+  // C2, Eb2, F2, G2 pattern
+  const bassSequence = [
+    65.41,
+    65.41,
+    65.41,
+    65.41, // C2
+    65.41,
+    65.41,
+    65.41,
+    65.41,
+    77.78,
+    77.78,
+    77.78,
+    77.78, // Eb2
+    87.31,
+    87.31,
+    98.0,
+    98.0, // F2, G2
+  ];
+
+  function scheduleNote(beatNumber, time) {
     const c = getContext();
 
-    // Deep bass drone
-    ambientOsc = c.createOscillator();
-    ambientOsc.type = "sawtooth";
-    ambientOsc.frequency.value = 55; // Low A
-
+    // --- Bass ---
+    // Play on every 16th note
+    const osc = c.createOscillator();
+    const gain = c.createGain();
     const filter = c.createBiquadFilter();
+
+    osc.type = "sawtooth";
+    osc.frequency.value =
+      bassSequence[Math.floor(beatNumber / 4) % bassSequence.length]; // Change note every 4 beats (1 bar) roughly, or let's do every 16th
+
+    // Let's actually iterate through the sequence properly.
+    // The sequence above is 16 steps long.
+    const noteFreq = bassSequence[beatNumber % 16];
+
+    // Slight detune for thickness
+    osc.frequency.setValueAtTime(noteFreq, time);
+
+    // Filter envelope (pluck)
     filter.type = "lowpass";
-    filter.frequency.value = 200;
-    filter.Q.value = 5;
+    filter.frequency.setValueAtTime(0, time);
+    filter.frequency.linearRampToValueAtTime(800, time + 0.01); // Attack
+    filter.frequency.exponentialRampToValueAtTime(100, time + 0.15); // Decay
 
-    // Slow filter sweep
+    // Amp envelope
+    gain.gain.setValueAtTime(0, time);
+    gain.gain.linearRampToValueAtTime(0.3, time + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.001, time + 0.15);
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(c.destination);
+
+    osc.start(time);
+    osc.stop(time + 0.2);
+  }
+
+  function scheduler() {
+    const c = getContext();
+    // Look ahead 100ms
+    while (nextNoteTime < c.currentTime + 0.1) {
+      scheduleNote(noteIndex, nextNoteTime);
+
+      // Advance time by a 16th note
+      const secondsPerBeat = 60.0 / tempo;
+      nextNoteTime += 0.25 * secondsPerBeat; // 16th note = 0.25 beats
+
+      noteIndex++;
+    }
+    sequenceTimerID = requestAnimationFrame(scheduler); // Use RAF for smoother timing loop, or setTimeout
+  }
+
+  // Pad Synth
+  function startPad() {
+    const c = getContext();
     const now = c.currentTime;
-    filter.frequency.setValueAtTime(100, now);
-    filter.frequency.linearRampToValueAtTime(300, now + 8);
-    filter.frequency.linearRampToValueAtTime(100, now + 16);
-    filter.frequency.setValueAtTime(100, now + 16);
 
-    // LFO for wobble
-    const lfo = c.createOscillator();
-    lfo.type = "sine";
-    lfo.frequency.value = 0.3;
-    const lfoGain = c.createGain();
-    lfoGain.gain.value = 30;
-    lfo.connect(lfoGain);
-    lfoGain.connect(filter.frequency);
-    lfo.start();
+    // Chord: Cm7 (C, Eb, G, Bb)
+    const freqs = [130.81, 155.56, 196.0, 233.08]; // C3, Eb3, G3, Bb3
 
-    ambientGain = c.createGain();
-    ambientGain.gain.value = 0;
-    ambientGain.gain.linearRampToValueAtTime(0.06, now + 3);
+    freqs.forEach((f) => {
+      const osc = c.createOscillator();
+      const gain = c.createGain();
 
-    ambientOsc.connect(filter);
-    filter.connect(ambientGain);
-    ambientGain.connect(c.destination);
-    ambientOsc.start();
+      osc.type = "sawtooth";
+      osc.frequency.value = f;
 
-    isAmbientPlaying = true;
+      // Detune slightly for chorus effect
+      osc.detune.value = Math.random() * 20 - 10;
 
-    // Loop the filter sweep
-    setInterval(() => {
-      if (!isAmbientPlaying) return;
-      const t = c.currentTime;
-      filter.frequency.cancelScheduledValues(t);
-      filter.frequency.setValueAtTime(filter.frequency.value, t);
-      filter.frequency.linearRampToValueAtTime(300, t + 8);
-      filter.frequency.linearRampToValueAtTime(100, t + 16);
-    }, 16000);
+      const filter = c.createBiquadFilter();
+      filter.type = "lowpass";
+      filter.frequency.value = 600;
+      filter.Q.value = 1;
+
+      // LFO for filter sweep
+      const lfo = c.createOscillator();
+      lfo.type = "sine";
+      lfo.frequency.value = 0.1 + Math.random() * 0.1; // Slow sweep
+      const lfoGain = c.createGain();
+      lfoGain.gain.value = 200;
+
+      lfo.connect(lfoGain);
+      lfoGain.connect(filter.frequency);
+      lfo.start();
+
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(c.destination);
+
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(0.03, now + 4); // Slow fade in
+
+      osc.start(now);
+      padOscs.push({ osc, gain, lfo });
+    });
+  }
+
+  function startAmbient() {
+    if (isPlaying) return;
+    const c = getContext();
+
+    // Resume context if suspended (browser requirements)
+    if (c.state === "suspended") {
+      c.resume();
+    }
+
+    isPlaying = true;
+    noteIndex = 0;
+    nextNoteTime = c.currentTime + 0.1;
+
+    // Start Sequencer
+    scheduler();
+
+    // Start Pad
+    startPad();
   }
 
   function stopAmbient() {
-    if (ambientOsc) {
-      const c = getContext();
-      ambientGain.gain.linearRampToValueAtTime(0, c.currentTime + 1);
-      setTimeout(() => {
-        ambientOsc.stop();
-        isAmbientPlaying = false;
-      }, 1100);
+    if (!isPlaying) return;
+    isPlaying = false;
+
+    // Stop sequencer
+    if (sequenceTimerID) {
+      cancelAnimationFrame(sequenceTimerID);
+      sequenceTimerID = null;
     }
+
+    // Fade out pads
+    const c = getContext();
+    const now = c.currentTime;
+    padOscs.forEach((p) => {
+      p.gain.gain.cancelScheduledValues(now);
+      p.gain.gain.setValueAtTime(p.gain.gain.value, now);
+      p.gain.gain.linearRampToValueAtTime(0, now + 2);
+      p.osc.stop(now + 2.1);
+      p.lfo.stop(now + 2.1);
+    });
+    padOscs = [];
   }
 
   // --- Lock-in Click SFX ---
