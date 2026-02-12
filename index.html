@@ -107,12 +107,13 @@
         document.querySelectorAll(".trigger-zone").forEach((zone) => {
           const zoneIndex = parseInt(zone.dataset.zone);
 
-          zone.addEventListener("mouseenter", () => {
-            ensureAudio();
-            if (!zone.classList.contains("triggered")) {
-              zone.classList.add("triggered");
-              Decoder.triggerZone(zoneIndex, messageContainer);
-            }
+          zone.addEventListener("mouseenter", (e) => {
+            ensureAudio(e);
+            Decoder.enterZone(zoneIndex, messageContainer);
+          });
+
+          zone.addEventListener("mousemove", () => {
+            Decoder.progressZone(zoneIndex);
           });
         });
 

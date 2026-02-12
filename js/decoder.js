@@ -30,13 +30,14 @@ const Decoder = (() => {
   let allLocked = false;
   let scrambleRAF = null;
   let lastScrambleTime = 0;
-  let zonesTriggered = 0;
-  let onComplete = null;
+  let zoneProgress = []; // Indices revealed per zone
+  let lastProgressTime = 0;
 
   function init(containerEl, completionCallback) {
     onComplete = completionCallback;
     containerEl.innerHTML = "";
     chars = [];
+    zoneProgress = new Array(ZONE_PHRASES.length).fill(0);
 
     // Build DOM
     MESSAGE_LINES.forEach((line, lineIdx) => {
@@ -148,44 +149,65 @@ const Decoder = (() => {
     return indices;
   }
 
-  function triggerZone(zoneIndex, containerEl) {
+  function enterZone(zoneIndex, containerEl) {
     if (zoneIndex >= ZONE_PHRASES.length) return;
 
+    // Slight glitch effect on enter
+    if (containerEl) {
+      containerEl.classList.add("glitch-flash");
+      setTimeout(() => containerEl.classList.remove("glitch-flash"), 200);
+    }
+
+    // Reveal just one char on enter? Or only if none revealed?
+    // User said: "Have the first letter be revealed 'on enter'"
+    // So if progress is 0, reveal 1.
+    if (zoneProgress[zoneIndex] === 0) {
+      revealNextChar(zoneIndex, true);
+    }
+  }
+
+  function progressZone(zoneIndex) {
+    // Reveal more letters while moving
+    // Throttle slightly to make it feel like "decrypting"
+    const now = performance.now();
+    if (now - lastProgressTime > 50) {
+      // Max 20 chars/sec
+      revealNextChar(zoneIndex, false);
+      lastProgressTime = now;
+    }
+  }
+
+  function revealNextChar(zoneIndex, isFirst) {
+    if (zoneIndex >= ZONE_PHRASES.length) return;
     const phrase = ZONE_PHRASES[zoneIndex];
     const indices = getCharIndicesForPhrase(phrase);
 
-    // Play SFX
-    AudioEngine.playLockIn();
+    const currentProgress = zoneProgress[zoneIndex];
 
-    // Glitch flash on container
-    containerEl.classList.add("glitch-flash");
-    setTimeout(() => containerEl.classList.remove("glitch-flash"), 200);
+    if (currentProgress >= indices.length) return; // All done
 
-    // Lock characters with staggered animation
-    indices.forEach((idx, i) => {
+    const charGlobalIndex = indices[currentProgress];
+    const c = chars[charGlobalIndex];
+
+    if (c && !c.locked) {
+      c.locked = true;
+      c.element.textContent = c.target;
+      c.element.classList.add("locking");
+
+      if (isFirst) {
+        AudioEngine.playLockIn();
+      } else {
+        AudioEngine.playTypeClick();
+      }
+
       setTimeout(() => {
-        const c = chars[idx];
-        if (c && !c.locked && c.target !== " ") {
-          c.locked = true;
-          c.element.textContent = c.target;
-          c.element.classList.add("locking");
-          setTimeout(() => {
-            c.element.classList.remove("locking");
-            c.element.classList.add("locked");
-          }, 300);
-        }
-      }, i * 30); // 30ms stagger per character
-    });
+        c.element.classList.remove("locking");
+        c.element.classList.add("locked");
+      }, 300);
+    }
 
-    zonesTriggered++;
-
-    // Check completion after stagger finishes
-    setTimeout(
-      () => {
-        checkCompletion();
-      },
-      indices.length * 30 + 350,
-    );
+    zoneProgress[zoneIndex]++;
+    checkCompletion();
   }
 
   function checkCompletion() {
@@ -202,5 +224,5 @@ const Decoder = (() => {
     if (scrambleRAF) cancelAnimationFrame(scrambleRAF);
   }
 
-  return { init, triggerZone, destroy };
+  return { init, enterZone, progressZone, destroy };
 })();
