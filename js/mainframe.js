@@ -289,31 +289,55 @@ const Mainframe = (() => {
     "module_init(mainframe_init);",
     "module_exit(mainframe_exit);",
   ];
+  // Hacker Typer approach: single corpus string, index-based slicing
+  const CODE_TEXT = CODE_LINES.join("\n");
+  const SPEED = 3;
 
-  let lineIndex = 0; // which line we're on
-  let charIndex = 0; // how far into the current line
+  let index = 0;
   let terminalEl = null;
   let cursorEl = null;
   let shiftCount = 0;
   let altCount = 0;
   let onTypeCallback = null;
+  let cursorTimer = null;
+  const PROMPT =
+    "> MAINFRAME INTERFACE v3.1.337\n> CONNECTION ESTABLISHED\n> TYPE TO ACCESS SYSTEM FILES...\n\n";
 
   function init(terminalElement, cursorElement, onType) {
     terminalEl = terminalElement;
     cursorEl = cursorElement;
     onTypeCallback = onType;
-    lineIndex = 0;
-    charIndex = 0;
+    index = 0;
     shiftCount = 0;
     altCount = 0;
 
-    // Initial prompt — use appendChild to preserve newlines
-    terminalEl.textContent = "";
-    appendToTerminal(
-      "> MAINFRAME INTERFACE v3.1.337\n> CONNECTION ESTABLISHED\n> TYPE TO ACCESS SYSTEM FILES...\n\n",
-    );
+    // Render initial prompt
+    renderTerminal();
+
+    // Blinking cursor
+    cursorTimer = setInterval(blinkCursor, 500);
 
     document.addEventListener("keydown", handleKeydown);
+  }
+
+  function renderTerminal() {
+    // Build the full text from prompt + typed portion of corpus
+    const raw = PROMPT + CODE_TEXT.substring(0, index);
+    // Convert whitespace to HTML (exactly like Hacker Typer)
+    const html = raw
+      .replace(/\n/g, "<br/>")
+      .replace(/\t/g, "&nbsp;&nbsp;&nbsp;&nbsp;")
+      .replace(/ /g, "&nbsp;");
+    terminalEl.innerHTML = html;
+  }
+
+  function blinkCursor() {
+    const content = terminalEl.innerHTML;
+    if (content.endsWith("|")) {
+      terminalEl.innerHTML = content.slice(0, -1);
+    } else {
+      terminalEl.innerHTML += "|";
+    }
   }
 
   function handleKeydown(e) {
@@ -333,42 +357,33 @@ const Mainframe = (() => {
     }
 
     // Prevent default for most keys (but allow F11, etc.)
-    if (!e.ctrlKey && !e.metaKey) {
-      e.preventDefault();
-    }
-
-    // Output ~3 characters, but always finish at word/line boundaries
-    let output = "";
-    let charsLeft = 3;
-
-    while (charsLeft > 0) {
-      const currentLine = CODE_LINES[lineIndex % CODE_LINES.length];
-
-      if (charIndex >= currentLine.length) {
-        // Finished this line — emit newline, advance to next line
-        output += "\n";
-        lineIndex++;
-        charIndex = 0;
-        charsLeft--;
-      } else {
-        // Grab remaining chars from this line (up to charsLeft)
-        const slice = currentLine.slice(charIndex, charIndex + charsLeft);
-        output += slice;
-        charsLeft -= slice.length;
-        charIndex += slice.length;
+    if (e.preventDefault && e.key !== "F11") {
+      if (!e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
       }
     }
 
-    // Append text as a new text node (preserves line breaks)
-    appendToTerminal(output);
+    // Advance the index (or go back for Backspace)
+    if (e.key === "Backspace") {
+      if (index > 0) index -= SPEED;
+    } else {
+      index += SPEED;
+    }
 
-    // Auto-scroll
+    // Loop back if we reach the end
+    if (index >= CODE_TEXT.length) index = 0;
+    if (index < 0) index = 0;
+
+    // Re-render the terminal with the new index
+    renderTerminal();
+
+    // Auto-scroll to bottom
     terminalEl.scrollTop = terminalEl.scrollHeight;
 
     // Play type click
     AudioEngine.playTypeClick();
 
-    // Dispatch custom event for cityscape interaction
+    // Dispatch for cityscape interaction
     if (onTypeCallback) onTypeCallback();
   }
 
@@ -382,14 +397,9 @@ const Mainframe = (() => {
     altCount = 0;
   }
 
-  // Append text to terminal as a new DOM text node
-  // (textContent += destroys and rebuilds the DOM, collapsing whitespace)
-  function appendToTerminal(text) {
-    terminalEl.appendChild(document.createTextNode(text));
-  }
-
   function destroy() {
     document.removeEventListener("keydown", handleKeydown);
+    if (cursorTimer) clearInterval(cursorTimer);
   }
 
   return { init, destroy };
